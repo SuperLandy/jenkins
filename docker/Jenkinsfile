@@ -1,0 +1,52 @@
+node {
+	def docker_image = '192.168.91.11/team/woshitaincai'
+
+	stage('代码检出'){
+	    git 'http://192.168.91.10/root/woshitaincai.git'
+	}
+	
+	stage('容器构建并推送'){
+	    dir('./'){
+    	    docker.withRegistry('http://192.168.91.11', 'd20a36bd-a449-404d-9226-f9f2ee247d45') {
+                def customImage = docker.build("${docker_image}:${env.BUILD_ID}")
+                customImage.push()
+    	    }
+        }
+	}
+	stage('漏洞扫描'){
+        sh "${PYTHON3} Scandocker.py ${env.BUILD_ID}"
+        echo "docker详细漏洞报告：http://192.168.91.11/api/repositories/team/woshitaincai/tags/${env.BUILD_ID}"
+	}
+	
+// 	stage('部署war包到测试环境'){
+// 		sshPublisher(publishers: [sshPublisherDesc(configName: 'tomcat', 
+// 		transfers: [sshTransfer(cleanRemote: false, excludes: '', 
+// 		execCommand: 'systemctl restart tomcat', execTimeout: 120000, 
+// 		flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, 
+// 		patternSeparator: '[, ]+', remoteDirectory: '/var/lib/tomcat/webapps/', 
+// 		remoteDirectorySDF: false, removePrefix: '', sourceFiles: '*.war')], 
+// 		usePromotionTimestamp: false, 
+// 		useWorkspaceInPromotion: false, verbose: false)])
+// 	}
+	stage('发布到测试环境'){
+	    def command = "docker run -d -p 80:8080 --name wuwuditu ${docker_image}:${env.BUILD_ID}"
+    	sshPublisher(publishers: [sshPublisherDesc(configName: 'tomcat', 
+		transfers: [sshTransfer(cleanRemote: false, excludes: '', 
+		execCommand: "if [ `docker ps -aq` ]; then docker rm -f `docker ps -aq` && ${command} ;else ${command} ;fi",
+		execTimeout: 120000, 
+		flatten: false, makeEmptyDirs: false, noDefaultExcludes: false)], 
+		usePromotionTimestamp: false, 
+		useWorkspaceInPromotion: false, verbose: false)])
+	}
+	
+	stage('自动化测试'){
+		echo '自动化测试'
+	}
+	stage('发布到生产服务器'){
+		echo '部署到生产服务器'
+	}
+	
+	stage('发布通知'){
+		echo '发布通知'
+	}
+}
